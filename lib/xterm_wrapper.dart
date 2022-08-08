@@ -1,8 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_pty/flutter_pty.dart';
-import 'package:get/utils.dart';
 import 'package:vscode_for_android/utils/extension.dart';
 import 'package:xterm/next.dart';
 import 'package:xterm/next/ui/terminal_theme.dart';
@@ -46,7 +46,7 @@ class _XTermWrapperState extends State<XTermWrapper> {
       widget.terminal,
       backgroundOpacity: 0,
       keyboardType: TextInputType.text,
-      theme: GetPlatform.isAndroid ? android : theme,
+      theme: Platform.isAndroid ? android : theme,
     );
   }
 }
