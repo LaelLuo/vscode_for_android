@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pty/flutter_pty.dart';
@@ -26,7 +27,7 @@ class _TerminalPageState extends State<TerminalPage> {
   // 环境变量
   Map<String, String> envir;
   Pty pseudoTerminal;
-  bool vsCodeStaring = false;
+  bool vsCodeStaring = true;
   Terminal terminal = Terminal();
 
   // 是否存在bash文件
@@ -34,6 +35,11 @@ class _TerminalPageState extends State<TerminalPage> {
     final File bashFile = File('${RuntimeEnvir.binPath}/bash');
     final bool exist = bashFile.existsSync();
     return exist;
+  }
+
+  Future<void> checkVersion() async {
+    final response = await Dio().get('https://api.github.com/repos/coder/code-server/releases/latest');
+    version = response.data['tag_name'].toString().substring(1);
   }
 
   Future<void> createPtyTerm() async {
@@ -54,6 +60,7 @@ class _TerminalPageState extends State<TerminalPage> {
     String dioPath = '${RuntimeEnvir.binPath}/dart_dio';
     File(dioPath).writeAsStringSync(Config.dioScript);
     await exec('chmod +x $dioPath');
+    await checkVersion();
     if (Platform.isAndroid) {
       if (!hasBash()) {
         // 初始化后 bash 应该存在
@@ -69,25 +76,17 @@ class _TerminalPageState extends State<TerminalPage> {
     );
     Future.delayed(const Duration(milliseconds: 300), () {
       pseudoTerminal.writeString(startVsCodeScript);
-      startVsCode(pseudoTerminal);
+      pseudoTerminal.writeString('''start_vs_code\n''');
+      setState(() {});
     });
     setState(() {});
     vsCodeStartWhenSuccessBind();
   }
 
-  Future<void> startVsCode(Pty pseudoTerminal) async {
-    vsCodeStaring = true;
-    setState(() {});
-    pseudoTerminal.writeString('''start_vs_code\n''');
-  }
-
   Future<void> vsCodeStartWhenSuccessBind() async {
     // WebView.platform = SurfaceAndroidWebView();
     final Completer completer = Completer();
-    pseudoTerminal.output
-        .cast<List<int>>()
-        .transform(const Utf8Decoder())
-        .listen((event) {
+    pseudoTerminal.output.cast<List<int>>().transform(const Utf8Decoder()).listen((event) {
       final List<String> list = event.split(RegExp('\x0d|\x0a'));
       final String lastLine = list.last.trim();
       if (lastLine.startsWith(RegExp('dart_dio'))) {

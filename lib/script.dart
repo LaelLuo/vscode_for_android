@@ -1,7 +1,7 @@
 // code-server版本号
 import 'package:global_repository/global_repository.dart';
 
-String version = '4.5.0';
+String version = '4.5.1';
 // prootDistro 路径
 String prootDistroPath = '${RuntimeEnvir.usrPath}/var/lib/proot-distro';
 // ubuntu 路径
@@ -65,20 +65,23 @@ install_ubuntu(){
 }
 ''';
 
+String get serverPath => '$ubuntuPath/home/code-server-$version-linux-arm64.tar.gz';
+
 /// 安装code-server的脚本
 String installVsCodeScript = '''
 $colorEcho
 install_vs_code(){
   if [ ! -d "$ubuntuPath/home/code-server-$version-linux-arm64" ];then
     cd $ubuntuPath/home
-    server_path="/sdcard/code-server-$version-linux-arm64.tar.gz"
+    server_path="$serverPath"
     if [ ! -f "\$server_path" ];then
+      colorEcho - 下载 Vs Code Arm64
       dart_dio \\
-      https://nightmare-my.oss-cn-beijing.aliyuncs.com/code-server-$version-linux-arm64.tar.gz \\
-      /sdcard/code-server-$version-linux-arm64.tar.gz
+      https://github.com/coder/code-server/releases/download/v$version/code-server-$version-linux-arm64.tar.gz \\
+      $serverPath
     fi
     colorEcho - 解压 Vs Code Arm64
-    tar zxvfh \$server_path
+    proot-distro login ubuntu -- tar zxfh \$server_path -C /home
     cd code-server-$version-linux-arm64
   fi
 }
