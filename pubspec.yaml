@@ -6,31 +6,24 @@ environment:
   sdk: ">=2.10.0 <3.0.0"
 
 dependencies:
+  archive: ^3.1.2
+  dio: ^4.0.6
   flutter:
     sdk: flutter
-
-  flutter_spinkit: "^4.1.2"
-  archive: ^3.1.2
-  dio: ^4.0.0
-  cupertino_icons: ^1.0.2
-  xterm:
-    git:
-      url: https://github.com/mengyanshou/xterm.dart
-      ref: v3
-  settings:
-    git: https://github.com/nightmare-space/settings
   flutter_pty:
     git: https://github.com/TerminalStudio/flutter_pty
   global_repository:
     git: https://github.com/nightmare-space/global_repository
+  settings:
+    git: https://github.com/nightmare-space/settings
+  xterm:
+    git:
+      url: https://github.com/mengyanshou/xterm.dart
+      ref: v3
 dev_dependencies:
+  flutter_lints: ^2.0.0
   flutter_test:
     sdk: flutter
-  flutter_lints: ^2.0.0
 flutter:
-  uses-material-design: true
   assets:
     - assets/
-
-
-# dependency_overrides:

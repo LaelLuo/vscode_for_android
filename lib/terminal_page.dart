@@ -6,7 +6,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pty/flutter_pty.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:global_repository/global_repository.dart';
 import 'package:vscode_for_android/utils/extension.dart';
 import 'package:xterm/next.dart';
@@ -233,10 +232,13 @@ class _TerminalPageState extends State<TerminalPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (vsCodeStaring)
-                          SpinKitDualRing(
-                            color: Theme.of(context).primaryColor,
-                            size: 18.w,
-                            lineWidth: 2.w,
+                          SizedBox(
+                            width: 18.w,
+                            height: 18.w,
+                            child: CircularProgressIndicator(
+                              color: Theme.of(context).primaryColor,
+                              strokeWidth: 2.w,
+                            ),
                           ),
                         if (vsCodeStaring)
                           const SizedBox(
