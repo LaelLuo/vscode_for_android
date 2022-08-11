@@ -21,6 +21,10 @@ code-server github release 中发布的 arm 版本的压缩包中存在硬链接
 tar -zcvhf code.tar.gz code-server-4.4.0-linux-arm64
 ```
 
+## 编译环境
+
+JDK11
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.
