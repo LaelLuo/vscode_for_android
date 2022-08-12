@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:global_repository/global_repository.dart';
 import 'package:settings/settings.dart';
+import 'package:vscode_for_android/utils/background_service.dart';
 
 import 'terminal_page.dart';
 
@@ -9,6 +10,7 @@ Future<void> main() async {
   RuntimeEnvir.initEnvirWithPackageName('com.nightmare.code');
   await initSettingStore(RuntimeEnvir.configPath);
   runApp(const MyApp());
+  await initService();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     systemNavigationBarColor: Colors.transparent,

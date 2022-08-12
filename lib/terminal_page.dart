@@ -5,9 +5,9 @@ import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_background/flutter_background.dart';
 import 'package:flutter_pty/flutter_pty.dart';
 import 'package:global_repository/global_repository.dart';
+import 'package:vscode_for_android/utils/background_service.dart';
 import 'package:vscode_for_android/utils/extension.dart';
 import 'package:xterm/next.dart';
 import 'config.dart';
@@ -83,7 +83,6 @@ class _TerminalPageState extends State<TerminalPage> {
   }
 
   Future<void> vsCodeStartWhenSuccessBind() async {
-    // WebView.platform = SurfaceAndroidWebView();
     final Completer completer = Completer();
     pseudoTerminal.output.cast<List<int>>().transform(utf8.decoder).listen((event) {
       final List<String> list = event.split(RegExp('\x0d|\x0a'));
@@ -103,11 +102,7 @@ class _TerminalPageState extends State<TerminalPage> {
       if (event.contains('already')) {
         completer.complete();
       }
-
       terminal.write(event);
-      // event.split('').forEach((element) {
-      //   terminal.write(event);
-      // });
     });
     await completer.future;
     PlauginUtil.openWebView();
@@ -195,25 +190,6 @@ class _TerminalPageState extends State<TerminalPage> {
     createPtyTerm();
   }
 
-  Future<void> startBackgroundService() async {
-    if (!Platform.isAndroid) return;
-    //前台服务配置
-    const androidConfig = FlutterBackgroundAndroidConfig(
-      notificationTitle: "VS Code",
-      notificationText: "Background notification for keeping the VS Code running in the background",
-    );
-    if (await FlutterBackground.initialize(androidConfig: androidConfig)) {
-      await FlutterBackground.enableBackgroundExecution();
-      background = true;
-    }
-  }
-
-  Future<void> stopBackgroundService() async {
-    if (!Platform.isAndroid) return;
-    await FlutterBackground.disableBackgroundExecution();
-    background = false;
-  }
-
   @override
   Widget build(BuildContext context) {
     if (pseudoTerminal == null) {
@@ -239,78 +215,60 @@ class _TerminalPageState extends State<TerminalPage> {
               children: [
                 buildButton(
                   context,
-                  InkWell(
-                    onTap: () {
-                      PlauginUtil.openWebView();
-                    },
-                    child: SizedBox(
-                      height: 48.w,
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16.w),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (vsCodeStaring)
-                              SizedBox(
-                                width: 18.w,
-                                height: 18.w,
-                                child: CircularProgressIndicator(
-                                  color: Theme.of(context).primaryColor,
-                                  strokeWidth: 2.w,
-                                ),
-                              ),
-                            if (vsCodeStaring)
-                              const SizedBox(
-                                width: 8,
-                              ),
-                            Text(
-                              vsCodeStaring ? 'VS Code 启动中...' : '打开VS Code窗口',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black,
-                                fontSize: 16.w,
-                              ),
-                            ),
-                          ],
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (vsCodeStaring)
+                        SizedBox(
+                          width: 18.w,
+                          height: 18.w,
+                          child: CircularProgressIndicator(
+                            color: Theme.of(context).primaryColor,
+                            strokeWidth: 2.w,
+                          ),
+                        ),
+                      if (vsCodeStaring)
+                        const SizedBox(
+                          width: 8,
+                        ),
+                      Text(
+                        vsCodeStaring ? 'VS Code 启动中...' : '打开VS Code窗口',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black,
+                          fontSize: 16.w,
                         ),
                       ),
-                    ),
+                    ],
                   ),
+                  PlauginUtil.openWebView,
                 ),
                 const SizedBox(height: 10),
                 buildButton(
                   context,
-                  InkWell(
-                    onTap: () async {
-                      if (background) {
-                        await stopBackgroundService();
-                      } else {
-                        await startBackgroundService();
-                      }
-                      setState(() {});
-                    },
-                    child: SizedBox(
-                      height: 48.w,
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16.w),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              background ? '关闭前台服务' : '开启前台服务',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black,
-                                fontSize: 16.w,
-                              ),
-                            ),
-                          ],
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        background ? '关闭前台服务' : '开启前台服务',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black,
+                          fontSize: 16.w,
                         ),
                       ),
-                    ),
+                    ],
                   ),
+                  () async {
+                    if (background) {
+                      await stopService();
+                    } else {
+                      await startService();
+                    }
+                    setState(() => background = !background);
+                  },
                 ),
               ],
             ),
@@ -320,12 +278,25 @@ class _TerminalPageState extends State<TerminalPage> {
     );
   }
 
-  Material buildButton(BuildContext context, Widget child) {
+  Widget buildButton(
+    BuildContext context,
+    Widget child,
+    GestureTapCallback onTap,
+  ) {
     return Material(
       color: const Color(0xfff3f4f9),
       borderRadius: BorderRadius.circular(12.w),
       clipBehavior: Clip.antiAlias,
-      child: child,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: 48.w,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.w),
+            child: child,
+          ),
+        ),
+      ),
     );
   }
 }
