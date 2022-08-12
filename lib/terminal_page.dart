@@ -28,6 +28,7 @@ class _TerminalPageState extends State<TerminalPage> {
   Map<String, String> envir;
   Pty pseudoTerminal;
   bool vsCodeStaring = true;
+  bool background = false;
   Terminal terminal = Terminal();
 
   // 是否存在bash文件
@@ -43,10 +44,7 @@ class _TerminalPageState extends State<TerminalPage> {
   }
 
   Future<void> createPtyTerm() async {
-    await startBackgroundService();
-    if (Platform.isAndroid) {
-      await PermissionUtil.requestStorage();
-    }
+    if (Platform.isAndroid) await PermissionUtil.requestStorage();
     envir = Map.from(Platform.environment);
     envir['HOME'] = RuntimeEnvir.homePath;
     envir['TERMUX_PREFIX'] = RuntimeEnvir.usrPath;
@@ -197,12 +195,6 @@ class _TerminalPageState extends State<TerminalPage> {
     createPtyTerm();
   }
 
-  @override
-  void dispose() {
-    stopBackgroundService();
-    super.dispose();
-  }
-
   Future<void> startBackgroundService() async {
     if (!Platform.isAndroid) return;
     //前台服务配置
@@ -212,12 +204,14 @@ class _TerminalPageState extends State<TerminalPage> {
     );
     if (await FlutterBackground.initialize(androidConfig: androidConfig)) {
       await FlutterBackground.enableBackgroundExecution();
+      background = true;
     }
   }
 
   Future<void> stopBackgroundService() async {
     if (!Platform.isAndroid) return;
     await FlutterBackground.disableBackgroundExecution();
+    background = false;
   }
 
   @override
@@ -240,52 +234,98 @@ class _TerminalPageState extends State<TerminalPage> {
               ),
             ),
           Center(
-            child: Material(
-              color: const Color(0xfff3f4f9),
-              borderRadius: BorderRadius.circular(12.w),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () {
-                  PlauginUtil.openWebView();
-                },
-                child: SizedBox(
-                  height: 48.w,
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.w),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (vsCodeStaring)
-                          SizedBox(
-                            width: 18.w,
-                            height: 18.w,
-                            child: CircularProgressIndicator(
-                              color: Theme.of(context).primaryColor,
-                              strokeWidth: 2.w,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                buildButton(
+                  context,
+                  InkWell(
+                    onTap: () {
+                      PlauginUtil.openWebView();
+                    },
+                    child: SizedBox(
+                      height: 48.w,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.w),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (vsCodeStaring)
+                              SizedBox(
+                                width: 18.w,
+                                height: 18.w,
+                                child: CircularProgressIndicator(
+                                  color: Theme.of(context).primaryColor,
+                                  strokeWidth: 2.w,
+                                ),
+                              ),
+                            if (vsCodeStaring)
+                              const SizedBox(
+                                width: 8,
+                              ),
+                            Text(
+                              vsCodeStaring ? 'VS Code 启动中...' : '打开VS Code窗口',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                                fontSize: 16.w,
+                              ),
                             ),
-                          ),
-                        if (vsCodeStaring)
-                          const SizedBox(
-                            width: 8,
-                          ),
-                        Text(
-                          vsCodeStaring ? 'VS Code 启动中...' : '打开VS Code窗口',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black,
-                            fontSize: 16.w,
-                          ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 10),
+                buildButton(
+                  context,
+                  InkWell(
+                    onTap: () async {
+                      if (background) {
+                        await stopBackgroundService();
+                      } else {
+                        await startBackgroundService();
+                      }
+                      setState(() {});
+                    },
+                    child: SizedBox(
+                      height: 48.w,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.w),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              background ? '关闭前台服务' : '开启前台服务',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                                fontSize: 16.w,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Material buildButton(BuildContext context, Widget child) {
+    return Material(
+      color: const Color(0xfff3f4f9),
+      borderRadius: BorderRadius.circular(12.w),
+      clipBehavior: Clip.antiAlias,
+      child: child,
     );
   }
 }
