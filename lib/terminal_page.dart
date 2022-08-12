@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_background/flutter_background.dart';
 import 'package:flutter_pty/flutter_pty.dart';
 import 'package:global_repository/global_repository.dart';
 import 'package:vscode_for_android/utils/extension.dart';
@@ -42,6 +43,7 @@ class _TerminalPageState extends State<TerminalPage> {
   }
 
   Future<void> createPtyTerm() async {
+    await startBackgroundService();
     if (Platform.isAndroid) {
       await PermissionUtil.requestStorage();
     }
@@ -85,7 +87,7 @@ class _TerminalPageState extends State<TerminalPage> {
   Future<void> vsCodeStartWhenSuccessBind() async {
     // WebView.platform = SurfaceAndroidWebView();
     final Completer completer = Completer();
-    pseudoTerminal.output.cast<List<int>>().transform(const Utf8Decoder()).listen((event) {
+    pseudoTerminal.output.cast<List<int>>().transform(utf8.decoder).listen((event) {
       final List<String> list = event.split(RegExp('\x0d|\x0a'));
       final String lastLine = list.last.trim();
       if (lastLine.startsWith(RegExp('dart_dio'))) {
@@ -193,6 +195,29 @@ class _TerminalPageState extends State<TerminalPage> {
   void initState() {
     super.initState();
     createPtyTerm();
+  }
+
+  @override
+  void dispose() {
+    stopBackgroundService();
+    super.dispose();
+  }
+
+  Future<void> startBackgroundService() async {
+    if (!Platform.isAndroid) return;
+    //前台服务配置
+    const androidConfig = FlutterBackgroundAndroidConfig(
+      notificationTitle: "VS Code",
+      notificationText: "Background notification for keeping the VS Code running in the background",
+    );
+    if (await FlutterBackground.initialize(androidConfig: androidConfig)) {
+      await FlutterBackground.enableBackgroundExecution();
+    }
+  }
+
+  Future<void> stopBackgroundService() async {
+    if (!Platform.isAndroid) return;
+    await FlutterBackground.disableBackgroundExecution();
   }
 
   @override
