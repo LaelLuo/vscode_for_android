@@ -7,11 +7,11 @@ class Config {
   static const String packageName = 'com.nightmare.code';
   static String dioScript = '''
     touch $dioLockFile
-            echo -n dart_dio "\$@"
-            while [ -f $dioLockFile ]
-            do {
-              sleep 0.5
-            }
-            done
-            exit''';
+    echo -n dart_dio "\$@"
+    while [ -f $dioLockFile ]
+    do {
+      sleep 0.5
+    }
+    done
+    exit''';
 }

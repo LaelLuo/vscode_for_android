@@ -1,15 +1,16 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:global_repository/global_repository.dart';
-import 'package:xterm/next.dart';
+import 'package:xterm/xterm.dart';
 
 import 'config.dart';
 
 const String dioLockFile = '/data/data/${Config.packageName}/files/dio_lock';
+
 class HttpHandler {
   static Future<void> handDownload({
-    String cmdLine,
-    Terminal controller,
+    required String cmdLine,
+    required Terminal controller,
   }) async {
     Log.d('handDownload');
     final RegExp regExp = RegExp('dart_dio');
@@ -40,6 +41,7 @@ class HttpHandler {
     //   getStderr: true,
     // );
     Log.d('fileName->$fileName');
+    var preProcessRadio = 0;
     await Dio().download(
       args.first,
       args.last,
@@ -53,13 +55,12 @@ class HttpHandler {
         controller.write(
           '\r\x1b[32m[${'#' * radio}${'.' * (column - radio)}] $processRadio%\x1b[0m',
         );
-        if (processRadio == 100) {
-          controller.write(
-            '\r\n',
-          );
-        }
+        if (processRadio == 100) controller.write('\r\n');
         controller.notifyListeners();
-        Log.d('process->$processRadio');
+        if (preProcessRadio != processRadio) {
+          Log.d('process->$processRadio');
+          preProcessRadio = processRadio;
+        }
       },
     );
     Log.d('下载 $fileName 结束');

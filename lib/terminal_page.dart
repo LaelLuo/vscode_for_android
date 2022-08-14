@@ -1,23 +1,21 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_pty/flutter_pty.dart';
 import 'package:global_repository/global_repository.dart';
+import 'package:vscode_for_android/local_terminal_backend.dart';
 import 'package:vscode_for_android/utils/background_service.dart';
-import 'package:vscode_for_android/utils/extension.dart';
-import 'package:xterm/next.dart';
+import 'package:xterm/flutter.dart';
+import 'package:xterm/theme/terminal_theme.dart';
+import 'package:xterm/xterm.dart';
 import 'config.dart';
 import 'http_handler.dart';
 import 'utils/plugin_util.dart';
 import 'script.dart';
-import 'xterm_wrapper.dart';
 
 class TerminalPage extends StatefulWidget {
-  const TerminalPage({Key key}) : super(key: key);
+  const TerminalPage({super.key});
 
   @override
   State<TerminalPage> createState() => _TerminalPageState();
@@ -25,116 +23,97 @@ class TerminalPage extends StatefulWidget {
 
 class _TerminalPageState extends State<TerminalPage> {
   // 环境变量
-  Map<String, String> envir;
-  Pty pseudoTerminal;
+  late final Map<String, String> envir;
+  late final LocalTerminalBackend ptyBackend;
+  late final Terminal terminal;
+  final initedCompleter = Completer();
   bool vsCodeStaring = true;
   bool background = false;
-  Terminal terminal = Terminal();
 
   // 是否存在bash文件
   bool hasBash() {
     final File bashFile = File('${RuntimeEnvir.binPath}/bash');
-    final bool exist = bashFile.existsSync();
-    return exist;
+    return bashFile.existsSync();
   }
 
   Future<void> checkVersion() async {
-    final response = await Dio().get('https://api.github.com/repos/coder/code-server/releases/latest');
-    version = response.data['tag_name'].toString().substring(1);
+    try {
+      final response = await Dio().get('https://api.github.com/repos/coder/code-server/releases/latest');
+      version = response.data['tag_name'].toString().substring(1);
+    } on Exception catch (e) {
+      Log.e('checkVersion error: $e');
+      // await checkVersion();
+    }
+  }
+
+  Future<void> initEnv() async {
+    envir = Map.from(Platform.environment);
+    envir['HOME'] = RuntimeEnvir.homePath!;
+    envir['TERMUX_PREFIX'] = RuntimeEnvir.usrPath!;
+    envir['TERM'] = 'xterm-256color';
+    envir['PATH'] = RuntimeEnvir.path!;
+    final ldPreloadPath = '${RuntimeEnvir.usrPath}/lib/libtermux-exec.so';
+    if (File(ldPreloadPath).existsSync()) envir['LD_PRELOAD'] = ldPreloadPath;
+    Directory(RuntimeEnvir.binPath!).createSync(recursive: true);
+    final dioPath = '${RuntimeEnvir.binPath}/dart_dio';
+    if (File(dioPath).existsSync()) return;
+    File(dioPath).writeAsStringSync(Config.dioScript);
+    await exec('chmod +x $dioPath');
   }
 
   Future<void> createPtyTerm() async {
+    var needInitTermial = false;
     if (Platform.isAndroid) await PermissionUtil.requestStorage();
-    envir = Map.from(Platform.environment);
-    envir['HOME'] = RuntimeEnvir.homePath;
-    envir['TERMUX_PREFIX'] = RuntimeEnvir.usrPath;
-    envir['TERM'] = 'xterm-256color';
-    envir['PATH'] = RuntimeEnvir.path;
-    if (File('${RuntimeEnvir.usrPath}/lib/libtermux-exec.so').existsSync()) {
-      envir['LD_PRELOAD'] = '${RuntimeEnvir.usrPath}/lib/libtermux-exec.so';
-    }
-    Directory(RuntimeEnvir.binPath).createSync(
-      recursive: true,
+    await initEnv();
+    if (Platform.isAndroid && !hasBash()) needInitTermial = true;
+    ptyBackend = LocalTerminalBackend(
+      envir,
+      needInitTermial,
     );
-    String dioPath = '${RuntimeEnvir.binPath}/dart_dio';
-    File(dioPath).writeAsStringSync(Config.dioScript);
-    await exec('chmod +x $dioPath');
-    await checkVersion();
-    if (Platform.isAndroid) {
-      if (!hasBash()) {
-        // 初始化后 bash 应该存在
-        initTerminal();
-        return;
-      }
-    }
-    pseudoTerminal = Pty.start(
-      '${RuntimeEnvir.binPath}/bash',
-      arguments: [],
-      environment: envir,
-      workingDirectory: RuntimeEnvir.homePath,
+    await Future.wait([checkVersion(), ptyBackend.inited]);
+    terminal = Terminal(
+      maxLines: 1000,
+      backend: ptyBackend,
+      theme: Platform.isAndroid ? android : theme,
     );
-    Future.delayed(const Duration(milliseconds: 300), () {
-      pseudoTerminal.writeString(startVsCodeScript);
-      pseudoTerminal.writeString('''start_vs_code\n''');
-      setState(() {});
-    });
-    setState(() {});
+    initedCompleter.complete();
     vsCodeStartWhenSuccessBind();
+    if (needInitTermial) {
+      await initTerminal();
+    } else {
+      ptyBackend.write(startVsCodeScript);
+      ptyBackend.write('start_vs_code\n');
+    }
   }
 
   Future<void> vsCodeStartWhenSuccessBind() async {
-    final Completer completer = Completer();
-    pseudoTerminal.output.cast<List<int>>().transform(utf8.decoder).listen((event) {
-      final List<String> list = event.split(RegExp('\x0d|\x0a'));
-      final String lastLine = list.last.trim();
-      if (lastLine.startsWith(RegExp('dart_dio'))) {
-        String data = event.replaceAll(RegExp('dart_dio.*'), '');
-        terminal.write(data);
+    final vscodeCompleter = Completer();
+    StreamSubscription? sub;
+    sub = ptyBackend.output.listen((event) {
+      final lastLine = event.trim();
+      if (lastLine.startsWith('dart_dio')) {
         HttpHandler.handDownload(
           controller: terminal,
-          cmdLine: list.last,
+          cmdLine: lastLine,
         );
-        return;
       }
-      if (event.contains('http://0.0.0.0:10000')) {
-        completer.complete();
+      void finish() {
+        vscodeCompleter.complete();
+        sub?.cancel();
+        setState(() => vsCodeStaring = false);
       }
-      if (event.contains('already')) {
-        completer.complete();
-      }
-      terminal.write(event);
+
+      if (lastLine.contains('http://0.0.0.0:10000')) finish();
+      if (lastLine.contains('already')) finish();
     });
-    await completer.future;
-    PlauginUtil.openWebView();
-    setState(() {});
-    Future.delayed(const Duration(milliseconds: 2000), () {
-      vsCodeStaring = false;
-      SystemChrome.setEnabledSystemUIMode(
-        SystemUiMode.manual,
-        overlays: [],
-      );
-      setState(() {});
-    });
+    await vscodeCompleter.future;
+    // PlauginUtil.openWebView();
   }
 
   Future<void> initTerminal() async {
-    pseudoTerminal = Pty.start(
-      '/system/bin/sh',
-      arguments: [],
-      environment: envir,
-      workingDirectory: RuntimeEnvir.homePath,
-    );
-
-    vsCodeStartWhenSuccessBind();
-    await Future.delayed(const Duration(milliseconds: 300));
-    pseudoTerminal.writeString(
-      initShell,
-    );
-    setState(() {});
-    await Future.delayed(const Duration(milliseconds: 100));
-    terminal.write('${getRedLog('- 解压资源中...')}\r\n');
-    Directory(RuntimeEnvir.tmpPath).createSync(recursive: true);
-    Directory(RuntimeEnvir.homePath).createSync(recursive: true);
+    ptyBackend.write(initShell);
+    Directory(RuntimeEnvir.tmpPath!).createSync(recursive: true);
+    Directory(RuntimeEnvir.homePath!).createSync(recursive: true);
     await AssetsUtils.copyAssetToPath(
       'assets/bootstrap-aarch64.zip',
       '${RuntimeEnvir.tmpPath}/bootstrap-aarch64.zip',
@@ -143,15 +122,13 @@ class _TerminalPageState extends State<TerminalPage> {
       'assets/proot-distro.zip',
       '${RuntimeEnvir.homePath}/proot-distro.zip',
     );
-    Directory('$prootDistroPath/dlcache').createSync(
-      recursive: true,
-    );
+    Directory('$prootDistroPath/dlcache').createSync(recursive: true);
     await AssetsUtils.copyAssetToPath(
       'assets/ubuntu-aarch64-pd-v2.3.1.tar.xz',
       '$prootDistroPath/dlcache/ubuntu-aarch64-pd-v2.3.1.tar.xz',
     );
     await unzipBootstrap('${RuntimeEnvir.tmpPath}/bootstrap-aarch64.zip');
-    pseudoTerminal.writeString('initApp\n');
+    ptyBackend.write('initApp\n');
   }
 
   Future<void> unzipBootstrap(String modulePath) async {
@@ -192,89 +169,91 @@ class _TerminalPageState extends State<TerminalPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (pseudoTerminal == null) {
-      return const SizedBox();
-    }
-    return WillPopScope(
-      onWillPop: () async {
-        pseudoTerminal.writeString('\x03');
-        return true;
-      },
-      child: Stack(
-        children: [
-          if (pseudoTerminal != null)
-            SafeArea(
-              child: XTermWrapper(
-                terminal: terminal,
-                pseudoTerminal: pseudoTerminal,
-              ),
-            ),
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                buildButton(
-                  context,
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (vsCodeStaring)
-                        SizedBox(
-                          width: 18.w,
-                          height: 18.w,
-                          child: CircularProgressIndicator(
-                            color: Theme.of(context).primaryColor,
-                            strokeWidth: 2.w,
+    return FutureBuilder(
+      future: initedCompleter.future,
+      builder: (BuildContext context, AsyncSnapshot<dynamic> snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const SizedBox();
+        }
+        return WillPopScope(
+          onWillPop: () async {
+            ptyBackend.write('\x03');
+            return true;
+          },
+          child: Stack(
+            children: [
+              SafeArea(child: TerminalView(terminal: terminal)),
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    buildButton(
+                      context,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (vsCodeStaring)
+                            SizedBox(
+                              width: 18.w,
+                              height: 18.w,
+                              child: CircularProgressIndicator(
+                                color: Theme.of(context).primaryColor,
+                                strokeWidth: 2.w,
+                              ),
+                            ),
+                          if (vsCodeStaring)
+                            const SizedBox(
+                              width: 8,
+                            ),
+                          Text(
+                            vsCodeStaring ? 'VS Code 启动中...' : '打开VS Code窗口',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                              fontSize: 16.w,
+                            ),
                           ),
-                        ),
-                      if (vsCodeStaring)
-                        const SizedBox(
-                          width: 8,
-                        ),
-                      Text(
-                        vsCodeStaring ? 'VS Code 启动中...' : '打开VS Code窗口',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black,
-                          fontSize: 16.w,
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                  PlauginUtil.openWebView,
-                ),
-                const SizedBox(height: 10),
-                buildButton(
-                  context,
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        background ? '关闭前台服务' : '开启前台服务',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black,
-                          fontSize: 16.w,
-                        ),
+                      () {
+                        if (vsCodeStaring) return;
+                        PlauginUtil.openWebView();
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    buildButton(
+                      context,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            background ? '关闭前台服务' : '开启前台服务',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                              fontSize: 16.w,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  () async {
-                    if (background) {
-                      await stopService();
-                    } else {
-                      await startService();
-                    }
-                    setState(() => background = !background);
-                  },
+                      () async {
+                        if (background) {
+                          await stopService();
+                        } else {
+                          await startService();
+                        }
+                        setState(() => background = !background);
+                      },
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -300,3 +279,55 @@ class _TerminalPageState extends State<TerminalPage> {
     );
   }
 }
+
+final android = TerminalTheme(
+  cursor: 0XAAAEAFAD,
+  selection: 0XFFFFFF40,
+  foreground: Colors.white.value,
+  background: 0XFF000000,
+  black: 0XFF000000,
+  red: 0XFFCD3131,
+  green: 0XFF0DBC79,
+  yellow: 0XFFE5E510,
+  blue: 0XFF2472C8,
+  magenta: 0XFFBC3FBC,
+  cyan: 0XFF11A8CD,
+  white: 0XFFE5E5E5,
+  brightBlack: 0XFF666666,
+  brightRed: 0XFFF14C4C,
+  brightGreen: 0XFF23D18B,
+  brightYellow: 0XFFF5F543,
+  brightBlue: 0XFF3B8EEA,
+  brightMagenta: 0XFFD670D6,
+  brightCyan: 0XFF29B8DB,
+  brightWhite: 0XFFFFFFFF,
+  searchHitBackground: 0XFFFFFF2B,
+  searchHitBackgroundCurrent: 0XFF31FF26,
+  searchHitForeground: 0XFF000000,
+);
+
+const theme = TerminalTheme(
+  cursor: 0XAAAEAFAD,
+  selection: 0XFFFFFF40,
+  foreground: 0XFF000000,
+  background: 0XFF000000,
+  black: 0XFF000000,
+  red: 0XFFCD3131,
+  green: 0XFF0DBC79,
+  yellow: 0XFFE5E510,
+  blue: 0XFF2472C8,
+  magenta: 0XFFBC3FBC,
+  cyan: 0XFF11A8CD,
+  white: 0XFFE5E5E5,
+  brightBlack: 0XFF666666,
+  brightRed: 0XFFF14C4C,
+  brightGreen: 0XFF23D18B,
+  brightYellow: 0XFFF5F543,
+  brightBlue: 0XFF3B8EEA,
+  brightMagenta: 0XFFD670D6,
+  brightCyan: 0XFF29B8DB,
+  brightWhite: 0XFFFFFFFF,
+  searchHitBackground: 0XFFFFFF2B,
+  searchHitBackgroundCurrent: 0XFF31FF26,
+  searchHitForeground: 0XFF000000,
+);

@@ -3,7 +3,7 @@ description: A new Flutter project.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.1.5+7
 environment:
-  sdk: ">=2.10.0 <3.0.0"
+  sdk: ">=2.17.0 <3.0.0"
 
 dependencies:
   archive: ^3.1.2
@@ -17,10 +17,7 @@ dependencies:
     git: https://github.com/nightmare-space/global_repository
   settings:
     git: https://github.com/nightmare-space/settings
-  xterm:
-    git:
-      url: https://github.com/mengyanshou/xterm.dart
-      ref: v3
+  xterm: ^2.6.0
 dev_dependencies:
   flutter_lints: ^2.0.0
   flutter_test:

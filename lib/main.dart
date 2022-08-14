@@ -8,7 +8,7 @@ import 'terminal_page.dart';
 
 Future<void> main() async {
   RuntimeEnvir.initEnvirWithPackageName('com.nightmare.code');
-  await initSettingStore(RuntimeEnvir.configPath);
+  await initSettingStore(RuntimeEnvir.configPath!);
   runApp(const MyApp());
   await initService();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -19,15 +19,13 @@ Future<void> main() async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Vs Code',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
+      theme: ThemeData(primarySwatch: Colors.blue),
       home: const Scaffold(
         backgroundColor: Colors.transparent,
         body: TerminalPage(),

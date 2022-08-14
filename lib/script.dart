@@ -140,4 +140,5 @@ function initApp(){
   start_vs_code
   bash
 }
+colorEcho - 解压资源中...
 ''';
