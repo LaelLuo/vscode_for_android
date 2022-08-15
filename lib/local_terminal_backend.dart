@@ -10,26 +10,23 @@ const _lineSplitter = LineSplitter();
 
 class LocalTerminalBackend extends TerminalBackend {
   final Map<String, String> _envir;
-  late final Completer _initCompleter;
+  final Completer _initCompleter;
   late final Pty _pty;
   late final Stream<String> output;
   late final Stream<String> lines;
 
-  LocalTerminalBackend(this._envir, bool needInitTermial) {
+  LocalTerminalBackend(this._envir, this._initCompleter, needInitTermial) {
     _pty = Pty.start(
       needInitTermial ? '/system/bin/sh' : '${RuntimeEnvir.binPath}/bash',
       arguments: [],
       environment: _envir,
       workingDirectory: RuntimeEnvir.homePath,
     );
-    _initCompleter = Completer();
     output = _pty.output.cast<List<int>>().transform(utf8.decoder).asBroadcastStream();
     lines = output.transform(_lineSplitter).asBroadcastStream();
     lines.listen((event) => Log.d('[pty] ${jsonEncode(event)}'));
     exec('pty inited').then(_initCompleter.complete);
   }
-
-  Future get inited => _initCompleter.future;
 
   @override
   Future<int> get exitCode => _pty.exitCode;

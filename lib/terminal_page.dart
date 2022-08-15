@@ -27,8 +27,8 @@ class _TerminalPageState extends State<TerminalPage> {
   late final LocalTerminalBackend ptyBackend;
   late final Terminal terminal;
   final initedCompleter = Completer();
-  bool vsCodeStaring = true;
-  bool background = false;
+  ValueNotifier<bool> vsCodeStaring = ValueNotifier(true);
+  ValueNotifier<bool> background = ValueNotifier(false);
 
   // 是否存在bash文件
   bool hasBash() {
@@ -68,15 +68,15 @@ class _TerminalPageState extends State<TerminalPage> {
     if (Platform.isAndroid && !hasBash()) needInitTermial = true;
     ptyBackend = LocalTerminalBackend(
       envir,
+      initedCompleter,
       needInitTermial,
     );
-    await Future.wait([checkVersion(), ptyBackend.inited]);
     terminal = Terminal(
       maxLines: 1000,
       backend: ptyBackend,
       theme: Platform.isAndroid ? android : theme,
     );
-    initedCompleter.complete();
+    await Future.wait([checkVersion(), initedCompleter.future]);
     vsCodeStartWhenSuccessBind();
     if (needInitTermial) {
       await initTerminal();
@@ -100,7 +100,7 @@ class _TerminalPageState extends State<TerminalPage> {
       void finish() {
         vscodeCompleter.complete();
         sub?.cancel();
-        setState(() => vsCodeStaring = false);
+        vsCodeStaring.value = false;
       }
 
       if (lastLine.contains('http://0.0.0.0:10000')) finish();
@@ -189,35 +189,40 @@ class _TerminalPageState extends State<TerminalPage> {
                   children: [
                     buildButton(
                       context,
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (vsCodeStaring)
-                            SizedBox(
-                              width: 18.w,
-                              height: 18.w,
-                              child: CircularProgressIndicator(
-                                color: Theme.of(context).primaryColor,
-                                strokeWidth: 2.w,
+                      ValueListenableBuilder(
+                        valueListenable: vsCodeStaring,
+                        builder: (BuildContext context, bool value, Widget? child) {
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (value)
+                                SizedBox(
+                                  width: 18.w,
+                                  height: 18.w,
+                                  child: CircularProgressIndicator(
+                                    color: Theme.of(context).primaryColor,
+                                    strokeWidth: 2.w,
+                                  ),
+                                ),
+                              if (value)
+                                const SizedBox(
+                                  width: 8,
+                                ),
+                              Text(
+                                value ? 'VS Code 启动中...' : '打开VS Code窗口',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black,
+                                  fontSize: 16.w,
+                                ),
                               ),
-                            ),
-                          if (vsCodeStaring)
-                            const SizedBox(
-                              width: 8,
-                            ),
-                          Text(
-                            vsCodeStaring ? 'VS Code 启动中...' : '打开VS Code窗口',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                              fontSize: 16.w,
-                            ),
-                          ),
-                        ],
+                            ],
+                          );
+                        },
                       ),
                       () {
-                        if (vsCodeStaring) return;
+                        if (vsCodeStaring.value) return;
                         PlauginUtil.openWebView();
                       },
                     ),
@@ -228,23 +233,29 @@ class _TerminalPageState extends State<TerminalPage> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            background ? '关闭前台服务' : '开启前台服务',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                              fontSize: 16.w,
-                            ),
+                          ValueListenableBuilder(
+                            valueListenable: background,
+                            builder: (BuildContext context, bool value, Widget? child) {
+                              return Text(
+                                value ? '关闭前台服务' : '开启前台服务',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black,
+                                  fontSize: 16.w,
+                                ),
+                              );
+                            },
                           ),
                         ],
                       ),
                       () async {
-                        if (background) {
+                        final value = background.value;
+                        if (value) {
                           await stopService();
                         } else {
                           await startService();
                         }
-                        setState(() => background = !background);
+                        background.value = !value;
                       },
                     ),
                   ],
